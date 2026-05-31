@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  analytics-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: apex_store_intelligence_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Brigade_Bangalore_10_April_26 (1)bc6219c.csv:/workspace/Brigade_Bangalore_10_April_26 (1)bc6219c.csv:ro
+    environment:
+      - ENV=production
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; r = requests.get('http://localhost:8000/health'); exit(0) if r.status_code == 200 else exit(1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
