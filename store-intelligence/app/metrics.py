@@ -1,30 +1,38 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Set
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Set
 from app.models import StoreTrackingEvent, RetailEventType, StoreZoneID
 
 class TransactionAnalyticsEngine:
-    def __init__(self, transaction_csv_path: str, rolling_window_minutes: int = 60):
+    def __init__(self, transaction_csv_path: Optional[str] = None, store_id: Optional[str] = None, rolling_window_minutes: int = 60):
         """
         Initializes the production-grade analytics engine, transforming the flat POS 
         ledger into an O(1) temporally bucketed hash index.
 
         Inputs:
-            transaction_csv_path (str): File system path targeting the POS purchase transactions ledger.
+            transaction_csv_path (Optional[str]): File system path targeting the POS purchase transactions ledger.
+            store_id (Optional[str]): Optional store identifier to filter ledger records.
             rolling_window_minutes (int): Time horizon window defining active calculations.
         """
         self.rolling_window_minutes = rolling_window_minutes
-        
-        raw_df = pd.read_csv(transaction_csv_path)
-        raw_df = raw_df[raw_df['store_id'] == "ST1008"].copy()
-        
+        self.bucketed_transactions: Dict[int, List[datetime]] = {}
+        self.transaction_csv_path = Path(transaction_csv_path) if transaction_csv_path else None
+        self.store_id = store_id
+
+        if self.transaction_csv_path is None or not self.transaction_csv_path.exists():
+            return
+
+        raw_df = pd.read_csv(self.transaction_csv_path)
+        if self.store_id:
+            raw_df = raw_df[raw_df['store_id'] == self.store_id].copy()
+
         raw_df['parsed_datetime'] = pd.to_datetime(
             raw_df['order_date'] + ' ' + raw_df['order_time'],
             format='%d-%m-%Y %H:%M:%S'
-        )
-        
-        self.bucketed_transactions: Dict[int, List[datetime]] = {}
+        ).dt.tz_localize('UTC')
+
         self._build_temporal_transaction_index(raw_df)
 
     def _build_temporal_transaction_index(self, df: pd.DataFrame) -> None:
@@ -75,9 +83,10 @@ class TransactionAnalyticsEngine:
         return False
 
     def calculate_rolling_store_metrics(
-        self, 
-        active_ledger_events: List[StoreTrackingEvent], 
-        current_queue_depth: int
+        self,
+        active_ledger_events: List[StoreTrackingEvent],
+        current_queue_depth: int,
+        store_id: str = "UNKNOWN",
     ) -> Dict[str, Any]:
         """
         Aggregates track data within a rolling time window, utilizing hash indexes 
@@ -91,7 +100,7 @@ class TransactionAnalyticsEngine:
             Dict[str, Any]: High-fidelity retail KPIs calculated over the active rolling time window.
         """
         if not active_ledger_events:
-            return self._build_empty_metrics_payload(current_queue_depth)
+            return self._build_empty_metrics_payload(current_queue_depth, store_id=store_id)
 
         newest_event_time = self._convert_iso_string_to_datetime(active_ledger_events[-1].timestamp)
         horizon_cutoff_time = newest_event_time - timedelta(minutes=self.rolling_window_minutes)
@@ -128,7 +137,7 @@ class TransactionAnalyticsEngine:
         confidence_rating = "HIGH" if total_unique_visitors >= 5 else "LOW"
 
         return {
-            "store_id": "ST1008",
+            "store_id": store_id,
             "calculation_horizon_minutes": self.rolling_window_minutes,
             "unique_visitors": total_unique_visitors,
             "conversion_rate": round(conversion_rate, 4),
@@ -137,18 +146,19 @@ class TransactionAnalyticsEngine:
             "data_confidence_rating": confidence_rating
         }
 
-    def _build_empty_metrics_payload(self, current_queue_depth: int) -> Dict[str, Any]:
+    def _build_empty_metrics_payload(self, current_queue_depth: int, store_id: str = "UNKNOWN") -> Dict[str, Any]:
         """
         Constructs a clean baseline data payload skeleton when no active data matches the query parameters.
 
         Inputs:
             current_queue_depth (int): Active consumer counts gathered at checkout counters.
+            store_id (str): The store identifier for this metrics payload.
 
         Outputs:
             Dict[str, Any]: Empty metrics structure fallback model.
         """
         return {
-            "store_id": "ST1008",
+            "store_id": store_id,
             "calculation_horizon_minutes": self.rolling_window_minutes,
             "unique_visitors": 0,
             "conversion_rate": 0.0,

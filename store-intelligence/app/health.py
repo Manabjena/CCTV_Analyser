@@ -22,7 +22,7 @@ class StreamDiagnosticMonitor:
         """
         for event in active_events:
             cleaned_timestamp = event.timestamp.replace("Z", "+00:00")
-            event_dt = datetime.fromisoformat(cleaned_str=cleaned_timestamp)
+            event_dt = datetime.fromisoformat(cleaned_timestamp)
             
             current_latest = self.camera_heartbeat_registry.get(event.camera_id)
             if not current_latest or event_dt > current_latest:

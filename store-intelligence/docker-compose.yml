@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   analytics-api:
     build:
@@ -9,7 +7,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./Brigade_Bangalore_10_April_26 (1)bc6219c.csv:/workspace/Brigade_Bangalore_10_April_26 (1)bc6219c.csv:ro
+      - "../Brigade_Bangalore_10_April_26 (1)bc6219c.csv:/workspace/Brigade_Bangalore_10_April_26 (1)bc6219c.csv:ro"
+      - "./app:/workspace/app:ro"
+      - "./tests:/workspace/tests:ro"
     environment:
       - ENV=production
       - LOG_LEVEL=info

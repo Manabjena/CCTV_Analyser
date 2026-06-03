@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Dict, Any, Set
 from app.models import StoreTrackingEvent, RetailEventType, StoreZoneID
 
@@ -12,7 +13,7 @@ class StatefulFunnelAggregator:
         """
         self.tx_engine = transaction_processor
 
-    def compile_conversion_funnel(self, active_events: List[StoreTrackingEvent]) -> Dict[str, Any]:
+    def compile_conversion_funnel(self, active_events: List[StoreTrackingEvent], store_id: str = "UNKNOWN") -> Dict[str, Any]:
         """
         Aggregates customer pathways into a multi-stage funnel to calculate conversion rates.
 
@@ -52,7 +53,7 @@ class StatefulFunnelAggregator:
         count_purchase = len(stage_4_purchase_ids)
 
         return {
-            "store_id": "ST1008",
+            "store_id": store_id,
             "funnel_metrics": {
                 "stage_1_store_entry": count_entry,
                 "stage_2_product_browse": count_browse,

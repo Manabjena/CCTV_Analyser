@@ -1,10 +1,15 @@
 import cv2
 import os
-from typing import Dict, List, Optional, Tuple ,Tupule, Generator
+import re
+import torch
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Generator
 from ultralytics import YOLO
 
+CAMERA_FILE_PATTERN = re.compile(r"CAM\s*(\d+)", re.IGNORECASE)
+
 class MultiCamStreamMultiplexer:
-    def __init__(self,video_directory:str,frame_target_width:int =1920, frame_target_height: int =1080):
+    def __init__(self, video_directory: str, frame_target_width: int = 1920, frame_target_height: int = 1080):
         """
         Initializes the multi-camera stream multiplexer by mapping the local folder files.
 
@@ -14,28 +19,47 @@ class MultiCamStreamMultiplexer:
             frame_target_height (int): Standardized scaling height for uniform matrix dimensions.
         """
 
-        self.directory = video_directory
+        self.directory = Path(video_directory)
         self.width = frame_target_width
         self.height = frame_target_height
-        self.camera_ids = [f"CAM {i}" for i in range(1, 6)]
-        self.captures = Dict[str, cv2.VideoCapture] = {}
+        self.camera_ids: List[str] = []
+        self.captures: Dict[str, cv2.VideoCapture] = {}
+
+    def _discover_camera_files(self) -> Dict[str, Path]:
+        camera_files: Dict[str, Path] = {}
+        if not self.directory.exists():
+            return camera_files
+
+        for file_path in self.directory.glob("*.mp4"):
+            match = CAMERA_FILE_PATTERN.search(file_path.name)
+            if match:
+                camera_files[f"CAM_{int(match.group(1))}"] = file_path
+
+        if not camera_files:
+            for file_path in self.directory.rglob("*.mp4"):
+                match = CAMERA_FILE_PATTERN.search(file_path.name)
+                if match:
+                    camera_files[f"CAM_{int(match.group(1))}"] = file_path
+
+        return camera_files
 
     def initialize_streams(self) -> None:
         """
-        Opens file pointers for all 5 cameras and verifies system availability.
+        Opens file pointers for available camera streams and verifies source availability.
 
         Outputs:
-            None. Raises FileNotFoundError if any of the mandatory 5 files are missing.
+            None. Raises FileNotFoundError if no valid camera video streams are found.
         """
-        for cam in self.camera_ids:
-            file_name = f"{cam}.mp4"
-            full_path = os.path.join(self.directory, file_name)
+        camera_files = self._discover_camera_files()
+        if not camera_files:
+            raise FileNotFoundError(f"No camera files found in directory: {self.directory}")
 
-            cap = cv2.VideoCapture(full_path)
+        self.camera_ids = sorted(camera_files.keys())
+        for cam_id, video_path in camera_files.items():
+            cap = cv2.VideoCapture(str(video_path))
             if not cap.isOpened():
-                raise FileNotFoundError(f"Unable to open video file: {full_path}")  
-            
-            self.captures[cam] = cap
+                raise FileNotFoundError(f"Unable to open video file: {video_path}")
+            self.captures[cam_id] = cap
 
     def yield_synchronized_frames(self) -> Generator[Tuple[int, Dict[str, Optional[cv2.Mat]]], None, None]:
         """
